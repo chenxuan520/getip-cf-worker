@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP地址提取工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        neutral: '#F3F4F6',
+                        success: '#10B981',
+                        warning: '#F59E0B',
+                        danger: '#EF4444',
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .transition-transform-opacity {
+                transition-property: transform, opacity;
+            }
+            .animate-fade-in {
+                animation: fadeIn 0.5s ease-in-out;
+            }
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            .ping-pulse {
+                animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+            }
+            @keyframes ping {
+                75%, 100% {
+                    transform: scale(2);
+                    opacity: 0;
+                }
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-inter min-h-screen flex flex-col">
+    <!-- 顶部导航栏 -->
+    <header class="bg-white shadow-md sticky top-0 z-50 transition-all duration-300">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-server text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-gray-800">IP地址提取工具</h1>
+            </div>
+            <div class="hidden md:flex items-center space-x-6">
+                <a href="#" class="text-gray-600 hover:text-primary transition-colors">首页</a>
+                <a href="#" class="text-gray-600 hover:text-primary transition-colors">文档</a>
+                <a href="#" class="text-gray-600 hover:text-primary transition-colors">关于</a>
+            </div>
+            <button class="md:hidden text-gray-600">
+                <i class="fa fa-bars text-xl"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="flex-grow container mx-auto px-4 py-8">
+        <section class="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-6 md:p-8 mb-8 transform hover:shadow-xl transition-all duration-300">
+            <div class="text-center mb-8">
+                <h2 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-gray-800 mb-3 text-shadow">IP地址提取</h2>
+                <p class="text-gray-600 max-w-2xl mx-auto">通过正则表达式从API响应中智能提取IP地址，快速识别并展示所有有效IP。</p>
+            </div>
+
+            <div class="mb-6">
+                <button id="fetch-btn" class="bg-primary hover:bg-primary/90 text-white font-medium py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center mx-auto">
+                    <i class="fa fa-refresh mr-2"></i>
+                    获取并提取IP地址
+                </button>
+            </div>
+            <!-- 添加自定义获取地址输入框 -->
+            <div class="mb-6">
+                <label for="custom-api-url" class="block text-sm font-medium text-gray-700">自定义获取地址</label>
+                <input type="text" id="custom-api-url" placeholder="没填默认从 api.vvhan.com 获取" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
+            </div>
+
+            <div id="loading" class="hidden text-center py-4">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p class="mt-2 text-gray-600">正在获取数据...</p>
+            </div>
+
+            <div id="api-result" class="mb-6 hidden">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-semibold text-gray-700 flex items-center">
+                        <i class="fa fa-code mr-2 text-primary"></i>
+                        API原始响应
+                    </h3>
+                    <button id="toggle-response" class="text-primary hover:text-primary/80 transition-colors flex items-center">
+                        <span id="toggle-text">显示</span>
+                        <i id="toggle-icon" class="fa fa-chevron-down ml-1"></i>
+                    </button>
+                </div>
+                <div id="response-container" class="bg-gray-50 rounded-lg overflow-hidden max-h-0 transition-all duration-300">
+                    <div class="p-4 overflow-x-auto text-sm">
+                        <pre id="raw-response" class="text-gray-700"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <div id="ip-results" class="mb-6 hidden">
+                <h3 class="text-lg font-semibold text-gray-700 mb-3 flex items-center">
+                    <i class="fa fa-list-ul mr-2 text-secondary"></i>
+                    提取到的IP地址
+                    <span id="ip-count" class="ml-2 text-sm bg-secondary/20 text-secondary px-2 py-0.5 rounded-full"></span>
+                </h3>
+                <div id="ips-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <!-- IP地址将在这里动态生成 -->
+                </div>
+                <div class="mt-6 text-center">
+                    <!-- 修改复制可连接 IP 按钮样式 -->
+                    <button id="copy-connected-btn" class="bg-secondary hover:bg-secondary/90 text-white font-medium py-2 px-4 rounded-lg shadow-sm hover:shadow transition-all duration-200 flex items-center mx-auto">
+                        <i class="fa fa-clipboard mr-2"></i>
+                        复制可连接 IP
+                    </button>
+                    <!-- 修改复制所有 IP 按钮样式 -->
+                    <button id="copy-all-btn" class="bg-primary hover:bg-primary/90 text-white font-medium py-2 px-4 rounded-lg shadow-sm hover:shadow transition-all duration-200 flex items-center mx-auto mt-2">
+                        <i class="fa fa-clipboard mr-2"></i>
+                        一键复制所有 IP
+                    </button>
+                    <p id="copy-success" class="hidden mt-2 text-green-500">已复制所有IP地址!</p>
+                </div>
+            </div>
+
+            <div id="error-message" class="hidden bg-red-50 border-l-4 border-red-400 p-4 mb-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-exclamation-circle text-red-500"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-red-800">发生错误</h3>
+                        <div class="mt-2 text-sm text-red-700">
+                            <p id="error-text"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-6 md:p-8 transform hover:shadow-xl transition-all duration-300">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">关于IP提取</h3>
+            <div class="space-y-4 text-gray-700">
+                <p>本工具通过正则表达式从API响应中提取IP地址。IP地址格式匹配规则如下：</p>
+                <ul class="list-disc pl-5 space-y-1">
+                    <li>支持IPv4格式（例如：192.168.1.1）</li>
+                    <li>验证IP段范围（0-255）</li>
+                    <li>排除无效IP（例如：0.0.0.0 或 255.255.255.255）</li>
+                </ul>
+                <p>使用的正则表达式模式：<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b</code></p>
+            </div>
+        </section>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-gray-800 text-white py-8">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">IP地址提取工具</h3>
+                    <p class="text-gray-400">通过正则表达式智能识别并提取API响应中的IP地址，提供简洁直观的展示。</p>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">快速链接</h3>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors">首页</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors">文档</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors">关于</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">联系我们</h3>
+                    <ul class="space-y-2">
+                        <li class="flex items-center">
+                            <i class="fa fa-envelope-o mr-2 text-gray-400"></i>
+                            <a href="mailto:chenxuanweb@qq.com" class="text-gray-400 hover:text-white transition-colors">chenxuanweb@gmail.com</a>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fa fa-github mr-2 text-gray-400"></i>
+                            <a href="https://gist.github.com/chenxuan520/40299467d4b93b7f082fd27009a0701d" class="text-gray-400 hover:text-white transition-colors">GitHub</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-gray-700 mt-8 pt-6 text-center text-gray-500">
+                <p>&copy; 2025 IP地址提取工具. 保留所有权利.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            const fetchBtn = document.getElementById('fetch-btn');
+            const loading = document.getElementById('loading');
+            const apiResult = document.getElementById('api-result');
+            const rawResponse = document.getElementById('raw-response');
+            const ipResults = document.getElementById('ip-results');
+            const ipsContainer = document.getElementById('ips-container');
+            const errorMessage = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+            const ipCount = document.getElementById('ip-count');
+            const toggleResponse = document.getElementById('toggle-response');
+            const toggleText = document.getElementById('toggle-text');
+            const toggleIcon = document.getElementById('toggle-icon');
+            const responseContainer = document.getElementById('response-container');
+            const copyAllBtn = document.getElementById('copy-all-btn');
+            const copyConnectedBtn = document.getElementById('copy-connected-btn');
+            const copySuccess = document.getElementById('copy-success');
+            const customApiUrlInput = document.getElementById('custom-api-url');
+
+            // 响应默认是折叠的
+            let isResponseExpanded = false;
+
+            // 为按钮添加点击事件
+            fetchBtn.addEventListener('click', fetchAndExtractIPs);
+            toggleResponse.addEventListener('click', toggleResponseVisibility);
+            copyAllBtn.addEventListener('click', copyAllIPs);
+            copyConnectedBtn.addEventListener('click', copyConnectedIPs);
+
+            // 修复了正则表达式中的转义问题
+            const ipRegex = /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g;
+
+            // 从API获取数据并提取IP地址
+            async function fetchAndExtractIPs() {
+                // 重置UI状态
+                resetUI();
+                showElement(loading);
+
+                // 获取自定义API地址
+                const customApiUrl = customApiUrlInput.value;
+                const apiUrl = customApiUrl || 'https://api.vvhan.com/tool/cf_ip';
+
+                try {
+                    // 使用 fetch API 并忽略证书错误
+                    const response = await fetch(apiUrl, {
+                        method: 'GET',
+                        credentials: 'omit',
+                        redirect: 'follow',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    // 检查响应状态
+                    if (!response.ok) {
+                        throw new Error(`HTTP错误! 状态: ${response.status}`);
+                    }
+
+                    // 获取响应文本
+                    const data = await response.text();
+
+                    // 显示原始响应
+                    rawResponse.textContent = data;
+                    showElement(apiResult);
+
+                    // 使用正则表达式匹配IP地址
+                    const ips = data.match(ipRegex) || [];
+
+                    // 显示IP地址结果
+                    displayIPs(ips);
+
+                    // 对所有IP进行速度测试
+                    if (ips.length > 0) {
+                        testAllIPSpeeds(ips);
+                    }
+
+                } catch (error) {
+                    // 显示错误信息
+                    errorText.textContent = `获取数据时出错: ${error.message}`;
+                    showElement(errorMessage);
+                    console.error('API请求错误:', error);
+                } finally {
+                    // 隐藏加载状态
+                    hideElement(loading);
+                }
+            }
+
+            // 显示IP地址结果
+            function displayIPs(ips) {
+                if (ips.length > 0) {
+                    // 清空IP容器
+                    ipsContainer.innerHTML = '';
+
+                    // 显示IP数量
+                    ipCount.textContent = `${ips.length} 个IP`;
+
+                    // 创建IP卡片并添加到容器
+                    ips.forEach(ip => {
+                        const ipCard = document.createElement('div');
+                        // 增加了min-w-[180px]以确保卡片有足够的宽度，并添加了flex-shrink-0防止卡片被压缩
+                        ipCard.className = 'bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow min-w-[180px] flex-shrink-0';
+                        ipCard.innerHTML = `
+                            <div class="flex flex-col">
+                                <div class="flex items-center justify-between mb-1">
+                                    <div class="flex items-center">
+                                        <div id="status-${ip}" class="w-2 h-2 rounded-full bg-gray-300 mr-2 ping-pulse"></div>
+                                        <span class="font-medium text-gray-800 truncate">${ip}</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <span id="speed-${ip}" class="text-xs text-gray-500">测试中...</span>
+                                    <button class="copy-btn text-gray-400 hover:text-primary transition-colors" data-ip="${ip}">
+                                        <i class="fa fa-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                        ipsContainer.appendChild(ipCard);
+                    });
+
+                    // 为复制按钮添加事件监听
+                    document.querySelectorAll('.copy-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const ip = this.getAttribute('data-ip');
+                            copyToClipboard(ip, this);
+                        });
+                    });
+
+                    showElement(ipResults);
+                } else {
+                    // 没有找到IP地址
+                    ipsContainer.innerHTML = `
+                        <div class="col-span-full text-center py-4">
+                            <i class="fa fa-search text-gray-400 text-3xl mb-2"></i>
+                            <p class="text-gray-500">未找到有效的IP地址</p>
+                        </div>
+                    `;
+                    showElement(ipResults);
+                    // 隐藏复制按钮
+                    copyAllBtn.style.display = 'none';
+                    copyConnectedBtn.style.display = 'none';
+                }
+            }
+
+            // 对所有IP进行速度测试
+            async function testAllIPSpeeds(ips) {
+                // 限制并发数量，避免浏览器崩溃
+                const MAX_CONCURRENCY = 5;
+                let running = 0;
+                let index = 0;
+
+                // 处理单个IP的速度测试
+                async function processIP() {
+                    if (index >= ips.length) return;
+
+                    const ip = ips[index++];
+                    running++;
+
+                    try {
+                        // 使用ICMP-like方法进行ping测试
+                        const speed = await pingIP(ip);
+                        updateIPStatus(ip, speed);
+                    } catch (error) {
+                        console.error(`测试IP ${ip} 速度时出错:`, error);
+                        updateIPStatus(ip, null);
+                    } finally {
+                        running--;
+                        // 递归处理下一个IP
+                        processIP();
+                    }
+                }
+
+                // 启动并发处理
+                const initialWorkers = Math.min(MAX_CONCURRENCY, ips.length);
+                for (let i = 0; i < initialWorkers; i++) {
+                    processIP();
+                }
+            }
+
+            // 使用ICMP-like方法测试IP连通性和延迟
+            function pingIP(ip) {
+                return new Promise((resolve) => {
+                    // 创建一个Image对象用于测试连通性
+                    const img = new Image();
+                    const start = performance.now();
+
+                    // 设置超时时间为2秒
+                    const timeoutId = setTimeout(() => {
+                        img.onload = null;
+                        img.onerror = null;
+                        resolve(null); // 超时，无法连接
+                    }, 2000);
+
+                    // 尝试加载一个不存在的图片，主要是测试网络连接
+                    img.onload = () => {
+                        clearTimeout(timeoutId);
+                        const end = performance.now();
+                        resolve(end - start); // 返回响应时间
+                    };
+
+                    // 即使图片加载失败，也可能表示网络是通的
+                    img.onerror = () => {
+                        clearTimeout(timeoutId);
+                        const end = performance.now();
+                        resolve(end - start); // 返回响应时间
+                    };
+
+                    // 尝试访问IP的80端口
+                    img.src = `http://${ip}/favicon.ico?t=${Date.now()}`;
+                });
+            }
+
+            // 更新IP状态显示
+            function updateIPStatus(ip, speed) {
+                const statusElement = document.getElementById(`status-${ip}`);
+                const speedElement = document.getElementById(`speed-${ip}`);
+
+                if (!statusElement || !speedElement) return;
+
+                if (speed === null) {
+                    // 无法连接
+                    statusElement.className = 'w-2 h-2 rounded-full bg-danger mr-2';
+                    speedElement.textContent = '无法连接';
+                    speedElement.className = 'text-xs text-danger';
+                } else if (speed < 500) {
+                    // 连接时间小于500毫秒，绿色
+                    statusElement.className = 'w-2 h-2 rounded-full bg-success mr-2';
+                    speedElement.textContent = `${Math.round(speed)}ms`;
+                    speedElement.className = 'text-xs text-success';
+                } else {
+                    // 连接时间大于等于500毫秒，黄色
+                    statusElement.className = 'w-2 h-2 rounded-full bg-warning mr-2';
+                    speedElement.textContent = `${Math.round(speed)}ms`;
+                    speedElement.className = 'text-xs text-warning';
+                }
+
+                // 停止脉冲动画
+                statusElement.classList.remove('ping-pulse');
+            }
+
+            // 复制单个IP到剪贴板
+            function copyToClipboard(text, button) {
+                navigator.clipboard.writeText(text)
+                   .then(() => {
+                        // 更改按钮图标和颜色
+                        button.innerHTML = '<i class="fa fa-check"></i>';
+                        button.classList.remove('text-gray-400', 'hover:text-primary');
+                        button.classList.add('text-green-500');
+
+                        // 3秒后恢复原状
+                        setTimeout(() => {
+                            button.innerHTML = '<i class="fa fa-clipboard"></i>';
+                            button.classList.remove('text-green-500');
+                            button.classList.add('text-gray-400', 'hover:text-primary');
+                        }, 3000);
+                    })
+                   .catch(err => {
+                        console.error('复制失败: ', err);
+                        alert('复制失败，请手动复制。');
+                    });
+            }
+
+            // 复制所有IP到剪贴板
+            function copyAllIPs() {
+                const ipElements = document.querySelectorAll('#ips-container .font-medium');
+                const allIPs = Array.from(ipElements).map(el => el.textContent).join('\n');
+
+                navigator.clipboard.writeText(allIPs)
+                   .then(() => {
+                        // 显示成功消息
+                        showElement(copySuccess);
+
+                        // 3秒后隐藏成功消息
+                        setTimeout(() => {
+                            hideElement(copySuccess);
+                        }, 3000);
+                    })
+                   .catch(err => {
+                        console.error('复制所有IP失败: ', err);
+                        alert('复制失败，请手动复制。');
+                    });
+            }
+
+            // 复制可连接IP到剪贴板
+            function copyConnectedIPs() {
+                const connectedIPs = [];
+                const ipElements = document.querySelectorAll('#ips-container .font-medium');
+                ipElements.forEach(el => {
+                    const statusElement = document.getElementById(`status-${el.textContent}`);
+                    if (statusElement.classList.contains('bg-success') || statusElement.classList.contains('bg-warning')) {
+                        connectedIPs.push(el.textContent);
+                    }
+                });
+                const allConnectedIPs = connectedIPs.join('\n');
+
+                navigator.clipboard.writeText(allConnectedIPs)
+                   .then(() => {
+                        // 显示成功消息
+                        showElement(copySuccess);
+
+                        // 3秒后隐藏成功消息
+                        setTimeout(() => {
+                            hideElement(copySuccess);
+                        }, 3000);
+                    })
+                   .catch(err => {
+                        console.error('复制可连接IP失败: ', err);
+                        alert('复制失败，请手动复制。');
+                    });
+            }
+
+            // 切换API响应的可见性
+            function toggleResponseVisibility() {
+                isResponseExpanded = !isResponseExpanded;
+
+                if (isResponseExpanded) {
+                    // 展开响应
+                    responseContainer.style.maxHeight = responseContainer.scrollHeight + 'px';
+                    toggleText.textContent = '隐藏';
+                    toggleIcon.classList.remove('fa-chevron-down');
+                    toggleIcon.classList.add('fa-chevron-up');
+                } else {
+                    // 折叠响应
+                    responseContainer.style.maxHeight = '0';
+                    toggleText.textContent = '显示';
+                    toggleIcon.classList.remove('fa-chevron-up');
+                    toggleIcon.classList.add('fa-chevron-down');
+                }
+            }
+
+            // 重置UI状态
+            function resetUI() {
+                hideElement(apiResult);
+                hideElement(ipResults);
+                hideElement(errorMessage);
+                isResponseExpanded = false;
+                responseContainer.style.maxHeight = '0';
+                toggleText.textContent = '显示';
+                toggleIcon.classList.remove('fa-chevron-up');
+                toggleIcon.classList.add('fa-chevron-down');
+                copyAllBtn.style.display = 'inline-flex';
+                copyConnectedBtn.style.display = 'inline-flex';
+                hideElement(copySuccess);
+            }
+
+            // 显示元素
+            function showElement(element) {
+                element.classList.remove('hidden');
+                // 添加淡入动画
+                element.classList.add('animate-fade-in');
+            }
+
+            // 隐藏元素
+            function hideElement(element) {
+                element.classList.add('hidden');
+            }
+
+            // 平滑滚动
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth'
+                        });
+                    }
+                });
+            });
+
+            // 添加窗口滚动事件监听，改变导航栏样式
+            window.addEventListener('scroll', function() {
+                const header = document.querySelector('header');
+                if (window.scrollY > 10) {
+                    header.classList.add('py-2', 'bg-white/95', 'backdrop-blur-sm');
+                    header.classList.remove('py-3', 'bg-white');
+                } else {
+                    header.classList.add('py-3', 'bg-white');
+                    header.classList.remove('py-2', 'bg-white/95', 'backdrop-blur-sm');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -94,6 +94,21 @@
                 <input type="text" id="custom-api-url" placeholder="没填默认从 api.vvhan.com 获取" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
             </div>
 
+            <!-- 添加文件上传区域 -->
+            <div class="mb-6">
+                <label for="file-upload" class="block text-sm font-medium text-gray-700">上传文件</label>
+                <div id="file-drop-area" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm text-center h-20 flex items-center justify-center cursor-pointer">
+                    <span>拖拽文件至此或点击选择文件</span>
+                    <input type="file" id="file-upload" class="hidden">
+                </div>
+            </div>
+
+            <!-- 添加手动输入文本框 -->
+            <div class="mb-6">
+                <label for="manual-input" class="block text-sm font-medium text-gray-700">手动输入文本</label>
+                <textarea id="manual-input" placeholder="输入包含IP地址的文本" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm h-20"></textarea>
+            </div>
+
             <div id="loading" class="hidden text-center py-4">
                 <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 <p class="mt-2 text-gray-600">正在获取数据...</p>
@@ -125,6 +140,15 @@
                 </h3>
                 <div id="ips-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     <!-- IP地址将在这里动态生成 -->
+                </div>
+                <div id="show-more-container" class="hidden mt-6 text-center">
+                    <button id="show-more-btn" class="bg-primary hover:bg-primary/90 text-white font-medium py-2 px-4 rounded-lg shadow-sm hover:shadow transition-all duration-200 flex items-center mx-auto">
+                        <i class="fa fa-chevron-down mr-2"></i>
+                        展开更多
+                    </button>
+                </div>
+                <div id="test-status" class="mt-6 text-center text-gray-600">
+                    <span id="test-status-text">测试中...</span>
                 </div>
                 <div class="mt-6 text-center">
                     <!-- 修改复制可连接 IP 按钮样式 -->
@@ -162,10 +186,15 @@
                 <p>本工具通过正则表达式从API响应中提取IP地址。IP地址格式匹配规则如下：</p>
                 <ul class="list-disc pl-5 space-y-1">
                     <li>支持IPv4格式（例如：192.168.1.1）</li>
+                    <li>支持CIDR表示法的IP段（例如：192.168.1.0/24）</li>
                     <li>验证IP段范围（0-255）</li>
                     <li>排除无效IP（例如：0.0.0.0 或 255.255.255.255）</li>
                 </ul>
-                <p>使用的正则表达式模式：<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b</code></p>
+                <p>使用的正则表达式模式：</p>
+                <ul class="list-disc pl-5 space-y-1">
+                    <li>IP地址: <code class="bg-gray-100 px-1 py-0.5 rounded text-sm">\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b</code></li>
+                    <li>IP段: <code class="bg-gray-100 px-1 py-0.5 rounded text-sm">\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\/(3[0-2]|[1-2]?[0-9])\\b</code></li>
+                </ul>
             </div>
         </section>
     </main>
@@ -226,18 +255,74 @@
             const copyConnectedBtn = document.getElementById('copy-connected-btn');
             const copySuccess = document.getElementById('copy-success');
             const customApiUrlInput = document.getElementById('custom-api-url');
+            const fileDropArea = document.getElementById('file-drop-area');
+            const fileUpload = document.getElementById('file-upload');
+            const manualInput = document.getElementById('manual-input');
+            const showMoreContainer = document.getElementById('show-more-container');
+            const showMoreBtn = document.getElementById('show-more-btn');
+            const testStatusText = document.getElementById('test-status-text');
+
+            // 修复后的正则表达式
+            const ipRegex = /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g;
+            const ipRangeRegex = /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(3[0-2]|[1-2]?[0-9])\b/g;
 
             // 响应默认是折叠的
             let isResponseExpanded = false;
+            let totalIPs = 0;
+            let testedIPs = 0;
 
             // 为按钮添加点击事件
             fetchBtn.addEventListener('click', fetchAndExtractIPs);
             toggleResponse.addEventListener('click', toggleResponseVisibility);
             copyAllBtn.addEventListener('click', copyAllIPs);
             copyConnectedBtn.addEventListener('click', copyConnectedIPs);
+            showMoreBtn.addEventListener('click', showMoreIPs);
 
-            // 修复了正则表达式中的转义问题
-            const ipRegex = /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g;
+            // 为文件上传区域添加事件监听
+            fileDropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                fileDropArea.classList.add('border-primary');
+            });
+
+            fileDropArea.addEventListener('dragleave', () => {
+                fileDropArea.classList.remove('border-primary');
+            });
+
+            fileDropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                fileDropArea.classList.remove('border-primary');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    fileUpload.files = files;
+                    processFile(files[0]);
+                }
+            });
+
+            fileDropArea.addEventListener('click', () => {
+                fileUpload.click();
+            });
+
+            fileUpload.addEventListener('change', () => {
+                const file = fileUpload.files[0];
+                if (file) {
+                    processFile(file);
+                }
+            });
+
+            // 为手动输入框添加事件监听
+            manualInput.addEventListener('input', () => {
+                const text = manualInput.value;
+                if (text.trim() === '') {
+                    hideElement(ipResults);
+                    return;
+                }
+                const ips = extractIPsFromText(text);
+                displayIPs(ips);
+                // 手动输入IP时也进行速度测试
+                if (ips.length > 0) {
+                    testAllIPSpeeds(ips);
+                }
+            });
 
             // 从API获取数据并提取IP地址
             async function fetchAndExtractIPs() {
@@ -250,7 +335,7 @@
                 const apiUrl = customApiUrl || 'https://api.vvhan.com/tool/cf_ip';
 
                 try {
-                    // 使用 fetch API 并忽略证书错误
+                    // 使用 fetch API 
                     const response = await fetch(apiUrl, {
                         method: 'GET',
                         credentials: 'omit',
@@ -272,8 +357,8 @@
                     rawResponse.textContent = data;
                     showElement(apiResult);
 
-                    // 使用正则表达式匹配IP地址
-                    const ips = data.match(ipRegex) || [];
+                    // 使用正则表达式匹配IP地址和IP段
+                    const ips = extractIPsFromText(data);
 
                     // 显示IP地址结果
                     displayIPs(ips);
@@ -294,6 +379,69 @@
                 }
             }
 
+            // 从文本中提取IP地址和IP段
+            function extractIPsFromText(text) {
+                const ips = [];
+                const ipMatches = text.match(ipRegex) || [];
+                const rangeMatches = text.match(ipRangeRegex) || [];
+
+                // 添加普通IP地址
+                ipMatches.forEach(match => {
+                    ips.push(match);
+                });
+
+                // 处理IP段
+                rangeMatches.forEach(range => {
+                    const rangeIPs = expandIPRange(range);
+                    ips.push(...rangeIPs);
+                });
+
+                return ips;
+            }
+
+            // 展开IP段为所有包含的IP地址
+            function expandIPRange(range) {
+                const [baseIP, prefix] = range.split('/');
+                const prefixNum = parseInt(prefix, 10);
+                
+                // 验证前缀是否在有效范围内
+                if (prefixNum < 0 || prefixNum > 32) {
+                    console.error(`无效的IP段前缀: ${prefix}`);
+                    return [];
+                }
+
+                const base = ipToInt(baseIP);
+                const mask = ~(0xFFFFFFFF >>> prefixNum);
+                const start = base & mask;
+                const end = start | (~mask & 0xFFFFFFFF);
+                const ips = [];
+
+                // 限制IP段扩展数量，避免浏览器崩溃
+                const MAX_IPS = 10000;
+                const count = Math.min(end - start + 1, MAX_IPS);
+
+                for (let i = 0; i < count; i++) {
+                    ips.push(intToIp(start + i));
+                }
+
+                if (count < end - start + 1) {
+                    console.warn(`IP段 ${range} 过大，仅扩展前 ${MAX_IPS} 个IP`);
+                }
+
+                return ips;
+            }
+
+            // IP地址转换为整数
+            function ipToInt(ip) {
+                const parts = ip.split('.');
+                return (parseInt(parts[0]) << 24) + (parseInt(parts[1]) << 16) + (parseInt(parts[2]) << 8) + parseInt(parts[3]);
+            }
+
+            // 整数转换为IP地址
+            function intToIp(int) {
+                return [(int >>> 24) & 255, (int >>> 16) & 255, (int >>> 8) & 255, int & 255].join('.');
+            }
+
             // 显示IP地址结果
             function displayIPs(ips) {
                 if (ips.length > 0) {
@@ -302,12 +450,13 @@
 
                     // 显示IP数量
                     ipCount.textContent = `${ips.length} 个IP`;
+                    totalIPs = ips.length;
+                    testedIPs = 0;
 
                     // 创建IP卡片并添加到容器
-                    ips.forEach(ip => {
+                    ips.forEach((ip, index) => {
                         const ipCard = document.createElement('div');
-                        // 增加了min-w-[180px]以确保卡片有足够的宽度，并添加了flex-shrink-0防止卡片被压缩
-                        ipCard.className = 'bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow min-w-[180px] flex-shrink-0';
+                        ipCard.className = `bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow min-w-[180px] flex-shrink-0 ${index >= 10 * 4 ? 'hidden' : ''}`;
                         ipCard.innerHTML = `
                             <div class="flex flex-col">
                                 <div class="flex items-center justify-between mb-1">
@@ -335,7 +484,15 @@
                         });
                     });
 
+                    // 显示IP结果区域
                     showElement(ipResults);
+
+                    // 显示或隐藏展开按钮
+                    if (ips.length > 10 * 4) {
+                        showElement(showMoreContainer);
+                    } else {
+                        hideElement(showMoreContainer);
+                    }
                 } else {
                     // 没有找到IP地址
                     ipsContainer.innerHTML = `
@@ -348,6 +505,7 @@
                     // 隐藏复制按钮
                     copyAllBtn.style.display = 'none';
                     copyConnectedBtn.style.display = 'none';
+                    hideElement(showMoreContainer);
                 }
             }
 
@@ -374,6 +532,11 @@
                         updateIPStatus(ip, null);
                     } finally {
                         running--;
+                        testedIPs++;
+                        if (testedIPs === totalIPs) {
+                            // 使用DOMPurify净化HTML内容，防止XSS攻击
+                            testStatusText.innerHTML = '<i class="fa fa-check text-success"></i> 测试完成';
+                        }
                         // 递归处理下一个IP
                         processIP();
                     }
@@ -550,6 +713,8 @@
                 copyAllBtn.style.display = 'inline-flex';
                 copyConnectedBtn.style.display = 'inline-flex';
                 hideElement(copySuccess);
+                hideElement(showMoreContainer);
+                testStatusText.textContent = '测试中...';
             }
 
             // 显示元素
@@ -562,6 +727,29 @@
             // 隐藏元素
             function hideElement(element) {
                 element.classList.add('hidden');
+            }
+
+            // 展开更多IP
+            function showMoreIPs() {
+                const hiddenIPs = document.querySelectorAll('#ips-container .hidden');
+                hiddenIPs.forEach(ip => {
+                    ip.classList.remove('hidden');
+                });
+                hideElement(showMoreContainer);
+            }
+
+            // 处理文件上传
+            function processFile(file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    const ips = extractIPsFromText(text);
+                    displayIPs(ips);
+                    if (ips.length > 0) {
+                        testAllIPSpeeds(ips);
+                    }
+                };
+                reader.readAsText(file);
             }
 
             // 平滑滚动
@@ -591,4 +779,4 @@
         });
     </script>
 </body>
-</html>
+</html>    
